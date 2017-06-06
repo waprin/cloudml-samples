@@ -23,54 +23,32 @@ from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
 
 
 # Define the format of your input data including unused columns
-CSV_COLUMNS = ['age', 'workclass', 'fnlwgt', 'education', 'education_num',
-               'marital_status', 'occupation', 'relationship', 'race', 'gender',
-               'capital_gain', 'capital_loss', 'hours_per_week', 'native_country',
-               'income_bracket']
-CSV_COLUMN_DEFAULTS = [[0], [''], [0], [''], [0], [''], [''], [''], [''], [''],
-                       [0], [0], [0], [''], ['']]
-LABEL_COLUMN = 'income_bracket'
-LABELS = [' <=50K', ' >50K']
+CSV_COLUMNS = ['issue_type', 'title', 'user', 'body']
+CSV_COLUMN_DEFAULTS = [[''], [''], [''], ['']]
+LABEL_COLUMN = 'issue_type'
+LABELS = ['kind/bug', 'kind/documentation', 'kind/feature']
 
 # Define the initial ingestion of each feature used by your model.
 # Additionally, provide metadata about the feature.
-INPUT_COLUMNS = [
-    # Categorical base columns
+INPUT_COLUMNS = {# Categorical base columns
 
     # For categorical columns with known values we can provide lists
     # of values ahead of time.
-    layers.sparse_column_with_keys(column_name='gender', keys=['female', 'male']),
 
-    layers.sparse_column_with_keys(
-        column_name='race',
-        keys=[
-            'Amer-Indian-Eskimo',
-            'Asian-Pac-Islander',
-            'Black',
-            'Other',
-            'White'
-        ]
-    ),
+    #layers.sparse_column_with_keys(column_name='is_question_mark',
+    #    keys=['yes', 'no']),
 
     # Otherwise we can use a hashing function to bucket the categories
-    layers.sparse_column_with_hash_bucket('education', hash_bucket_size=1000),
-    layers.sparse_column_with_hash_bucket('marital_status', hash_bucket_size=100),
-    layers.sparse_column_with_hash_bucket('relationship', hash_bucket_size=100),
-    layers.sparse_column_with_hash_bucket('workclass', hash_bucket_size=100),
-    layers.sparse_column_with_hash_bucket('occupation', hash_bucket_size=1000),
-    layers.sparse_column_with_hash_bucket('native_country', hash_bucket_size=1000),
+    layers.sparse_column_with_hash_bucket('title', hash_bucket_size=1000),
+    layers.sparse_column_with_hash_bucket('user', hash_bucket_size=1000),
+    layers.sparse_column_with_hash_bucket('body', hash_bucket_size=1000),
 
-    # Continuous base columns.
-    layers.real_valued_column('age'),
-    layers.real_valued_column('education_num'),
-    layers.real_valued_column('capital_gain'),
-    layers.real_valued_column('capital_loss'),
-    layers.real_valued_column('hours_per_week'),
-]
+}
 
 UNUSED_COLUMNS = set(CSV_COLUMNS) - {col.name for col in INPUT_COLUMNS} - {LABEL_COLUMN}
 
-def build_estimator(model_dir, embedding_size=8, hidden_units=None):
+
+def build_estimator(model_dir):
   """Build a wide and deep model for predicting income category.
 
   Wide and deep models use deep neural nets to learn high level abstractions
@@ -96,57 +74,9 @@ def build_estimator(model_dir, embedding_size=8, hidden_units=None):
   Returns:
     A DNNCombinedLinearClassifier
   """
-  (gender, race, education, marital_status, relationship,
-   workclass, occupation, native_country, age,
-   education_num, capital_gain, capital_loss, hours_per_week) = INPUT_COLUMNS
-  """Build an estimator."""
-
-  # Reused Transformations.
-  # Continuous columns can be converted to categorical via bucketization
-  age_buckets = layers.bucketized_column(
-      age, boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
-
-  # Wide columns and deep columns.
-  wide_columns = [
-      # Interactions between different categorical features can also
-      # be added as new virtual features.
-      layers.crossed_column(
-          [education, occupation], hash_bucket_size=int(1e4)),
-      layers.crossed_column(
-          [age_buckets, race, occupation], hash_bucket_size=int(1e6)),
-      layers.crossed_column(
-          [native_country, occupation], hash_bucket_size=int(1e4)),
-      gender,
-      native_country,
-      education,
-      occupation,
-      workclass,
-      marital_status,
-      relationship,
-      age_buckets,
-  ]
-
-  deep_columns = [
-      layers.embedding_column(workclass, dimension=embedding_size),
-      layers.embedding_column(education, dimension=embedding_size),
-      layers.embedding_column(marital_status, dimension=embedding_size),
-      layers.embedding_column(gender, dimension=embedding_size),
-      layers.embedding_column(relationship, dimension=embedding_size),
-      layers.embedding_column(race, dimension=embedding_size),
-      layers.embedding_column(native_country, dimension=embedding_size),
-      layers.embedding_column(occupation, dimension=embedding_size),
-      age,
-      education_num,
-      capital_gain,
-      capital_loss,
-      hours_per_week,
-  ]
-
-  return tf.contrib.learn.DNNLinearCombinedClassifier(
+  return tf.contrib.learn.LinearClassifier(
       model_dir=model_dir,
-      linear_feature_columns=wide_columns,
-      dnn_feature_columns=deep_columns,
-      dnn_hidden_units=hidden_units or [100, 70, 50, 25])
+      feature_columns = INPUT_COLUMNS)
 
 
 def parse_label_column(label_string_tensor):
@@ -190,8 +120,7 @@ def serving_input_fn():
       column.name: tf.placeholder(column.dtype, [None])
       for column in INPUT_COLUMNS
   }
-  # DNNCombinedLinearClassifier expects rank 2 Tensors, but inputs should be
-  # rank 1, so that we can provide scalars to the server
+
   features = {
     key: tf.expand_dims(tensor, -1)
     for key, tensor in feature_placeholders.items()
@@ -236,14 +165,12 @@ def generate_input_fn(filenames,
 
     _, rows = reader.read_up_to(filename_queue, num_records=batch_size)
 
-    # DNNLinearCombinedClassifier expects rank 2 tensors.
-    row_columns = tf.expand_dims(rows, -1)
-    columns = tf.decode_csv(row_columns, record_defaults=CSV_COLUMN_DEFAULTS)
+    #tf.Print(rows, [rows], message="eliot bixby")
+    #row_columns = tf.expand_dims(rows, -1)
+    print(rows)
+    columns = tf.decode_csv(rows, record_defaults=CSV_COLUMN_DEFAULTS)
     features = dict(zip(CSV_COLUMNS, columns))
 
-    # Remove unused columns
-    for col in UNUSED_COLUMNS:
-      features.pop(col)
 
     if shuffle:
       # This operation maintains a buffer of Tensors so that inputs are
@@ -257,6 +184,8 @@ def generate_input_fn(filenames,
           enqueue_many=True,
           allow_smaller_final_batch=True
       )
+
     label_tensor = parse_label_column(features.pop(LABEL_COLUMN))
     return features, label_tensor
+
   return _input_fn

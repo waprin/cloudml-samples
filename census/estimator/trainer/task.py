@@ -49,17 +49,9 @@ def generate_experiment_fn(train_files,
     return tf.contrib.learn.Experiment(
         model.build_estimator(
             output_dir,
-            embedding_size=embedding_size,
-            # Construct layers sizes with exponetial decay
-            hidden_units=[
-                max(2, int(first_layer_size * scale_factor**i))
-                for i in range(num_layers)
-            ]
         ),
         train_input_fn=train_input,
         eval_input_fn=eval_input,
-        # export strategies control the prediction graph structure
-        # of exported binaries.
         export_strategies=[saved_model_export_utils.make_export_strategy(
             model.serving_input_fn,
             default_output_alternative_key=None,
@@ -186,7 +178,7 @@ if __name__ == '__main__':
 
   job_dir = arguments.pop('job_dir')
 
-  print('Starting Census: Please lauch tensorboard to see results:\n'
+  print('Starting Census: Please launch tensorboard to see results:\n'
         'tensorboard --logdir=$MODEL_DIR')
 
   # Run the training job
